@@ -1,24 +1,23 @@
 #ifndef MAP_H
 #define MAP_H
 
+/*************
+ * map_entry *
+ *************/
+
+struct map_entry {
+    char* key;
+    int val;
+}
+
 /***********
  * hashmap *
  ***********/
 
 struct hashmap {
-    
+    struct map_entry** buckets;
+    int cap;
+    int len;
 }
-
-struct kv_pair {
-    char* key;
-    int val;
-};
-
-struct hash_table {
-    struct kv_pair** pairs;         /* list of obj indices */
-    int n_pairs;                    /* running count of keys */
-    int size;                       /* number of buckets in ht */
-};
-
 
 #endif    /* MAP_H */
