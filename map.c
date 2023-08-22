@@ -1,99 +1,79 @@
+#include <string.h>
+#include <stdlib.h>
 
-const int SIZES[23] = {
-    53, 107, 223, 449, 907, 1823, 3659, 
-    7321, 14653, 29311, 58631, 117269, 
-    234539, 469099, 938207, 1876417, 
-    3752839, 7505681, 15011389, 30022781, 
-    60045577, 120091177, 240182359
-};
-
-int SIZES_INDEX = 0;  /* current position in the array above */
+#include "map.h"
 
 /*********************************************************************
  *                                                                   *
- *                              structs                              *
+ *                      constructor / destructor                     *
  *                                                                   *
  *********************************************************************/
 
+/***************
+ * entry_alloc *
+ ***************/
 
-
-static void 
-grow(struct hash_table* ht);
-
-/*********************************************************************
- *                                                                   *
- *                (private) kv_pair memory management                *
- *                                                                   *
- *********************************************************************/
-
-/*****************
- * kv_pair_alloc *
- *****************/
-
-/* allocates a key value pair */
-static struct kv_pair* 
-kv_pair_alloc(char* key, int val)
+struct map_entry* 
+entry_alloc(char* key, int val)
 {
-    struct kv_pair* pair = malloc(sizeof(struct kv_pair));
-    pair->key = strdup(key);
-    pair->val = val;
-    return pair;
+    struct map_entry* entry;
+    
+    entry = malloc(sizeof(struct map_entry));
+    entry->key = strdup(key);
+    entry->val = val;
+    return entry;
 }
 
-/****************
- * kv_pair_free *
- ****************/
+/**************
+ * entry_free *
+ **************/
 
-/* frees kv_pair */
-static void
-kv_pair_free(struct kv_pair* pair) 
+void
+entry_free(struct map_entry* entry) 
 {
-    free(pair->key);
-    free(pair);
+    free(entry->key);
+    free(entry);
 }
 
-/*********************************************************************
- *                                                                   *
- *             (private) hash table memory management                *
- *                                                                   *
- *********************************************************************/
+/*************
+ * map_alloc *
+ *************/
 
-/********************
- * hash_table_alloc *
- ********************/
-
-/* allocates empty hashtable of current size */
-static struct hash_table* 
-hash_table_alloc()
+struct hashmap*
+map_alloc(int cap)
 {
-    struct hash_table* ht = malloc(sizeof(struct hash_table));
-    ht->size = SIZES[SIZES_INDEX];
-    ht->n_pairs = 0;
-    ht->pairs = calloc(ht->size, sizeof(struct kv_pair*));
+    struct hashmap* map;
+   
+    map = malloc(sizeof(struct hashmap));
+    map->cap = cap;
+    map->len = 0;
+    map->entries = calloc(cap, sizeof(struct map_entry*));
     return ht;
 }
 
-/*******************
- * hash_table_free *
- *******************/
+/************
+ * map_free *
+ ************/
 
-/* frees hashtable */
-static void
-hash_table_free(struct hash_table* ht) 
+void
+map_free(struct map* map) 
 {
-    for (int i = 0; i < ht->size; i++) {
-        struct kv_pair* pair= ht->pairs[i];
-        if (pair != NULL) {
-            kv_pair_free(pair);
-        }
+    for (int i = 0; i < map->len; i++) {
+        struct map_entry* entry;
+	
+	entry = map->entries[i];
+
+        if (pair)
+            entry_free(entry);
     }
-    free(ht->pairs);
-    free(ht);
+
+    free(map->entries);
+    free(map);
 }
 
 /*********************************************************************
  *                                                                   *
- *             (private) open addressed string hashing               *
+ *                              utility                              *
  *                                                                   *
  *********************************************************************/
 
@@ -135,98 +115,12 @@ hash_2(char* key)
     return hash;
 }
 
-/***************
- * double_hash *
- ***************/
-
-/**
- * sends a string through two hash functions, useses them with an 
- * attempt counter to find a determenistic index into the hash table
- */
-static int
-double_hash(char* string, int size, int attempt)
-{
-    int hash_a = hash_1(string);
-    int hash_b = hash_2(string);
-    return abs(hash_a + (attempt * (hash_b + 1))) % size;
-}
-
-/*********************************************************************
- *                                                                   *
- *             (private) hash table interface functions              *
- *                                                                   *
- *********************************************************************/
-
-/**********
- * insert *
- **********/
-
-/* inserts key into hash table */
-static void
-insert(struct hash_table* ht, char* key, int val) 
-{
-    int load = ht->n_pairs * 100 / ht->size;
-
-    if (load > 70) {
-        grow(ht);
-    }
-
-    struct kv_pair* pair = kv_pair_alloc(key, val);
-    
-    int index = double_hash(pair->key, ht->size, 0);
-    
-    struct kv_pair* cur_pair = ht->pairs[index];
-    
-    int i = 1;
-    while (cur_pair) {
-        index = double_hash(pair->key, ht->size, i);
-        cur_pair = ht->pairs[index]; /* collided item */
-        i++;
-    }
-
-    ht->pairs[index] = pair;
-    ht->n_pairs++;
-}
-
-/**********
- * search *
- **********/
-
-/* returns val of key or -1 if it isn't in the hash table */
-static int
-search(struct hash_table* ht, char* key)
-{
-    int index = double_hash(key, ht->size, 0);
-    
-    struct kv_pair* cur_pair = ht->pairs[index];
-    
-    int i = 1;
-    while (cur_pair) {
-	if (!strcmp(cur_pair->key, key)) return cur_pair->val;
-        index = double_hash(key, ht->size, i);
-        cur_pair = ht->pairs[index];
-        i++;
-    }
-
-    return -1;
-}
-
-/*********************************************************************
- *                                                                   *
- *                    (private) hash table helpers                   *
- *                                                                   *
- *********************************************************************/
-
 /********
  * grow *
  ********/
 
-/** 
- * nearly doubles the capacity of hashtable
- * it finds new size by indexing into a global sizes array
- */
-static void 
-grow(struct hash_table* ht)
+void
+resize(struct hashmap* map, int new_cap)
 {
     SIZES_INDEX++;
     struct hash_table* new_ht = hash_table_alloc();
@@ -249,5 +143,58 @@ grow(struct hash_table* ht)
     new_ht->pairs = tmp_pairs;
 
     hash_table_free(new_ht);
+}
+
+/*********************************************************************
+ *                                                                   *
+ *                             insertion                             *
+ *                                                                   *
+ *********************************************************************/
+
+/***********
+ * map_set *
+ ***********/
+
+void
+map_set(struct hashmap* map, char* key, int val) 
+{
+}
+
+/***********
+ * map_put *
+ ***********/
+
+void
+map_put(struct hashmap* map, char* key, int val) 
+{
+}
+
+/*********************************************************************
+ *                                                                   *
+ *                             deletion                              *
+ *                                                                   *
+ *********************************************************************/
+
+/***********
+ * map_del *
+ ***********/
+
+map_del(struct hashmap* map, char* key)
+{
+}
+
+
+/*********************************************************************
+ *                                                                   *
+ *                             retrieval                             *
+ *                                                                   *
+ *********************************************************************/
+
+/***********
+ * map_get *
+ ***********/
+
+map_get(struct hashmap* map, char* key)
+{
 }
 
