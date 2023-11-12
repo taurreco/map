@@ -1,7 +1,32 @@
 #include <string.h>
+#include <stdint.h>
 #include <stdlib.h>
 
 #include "map.h"
+
+
+typedef void (*free_fn)(void* a);
+
+/*********
+ * entry *
+ *********/
+
+struct entry {
+    char* key;
+    uintptr_t val;    /* can also be a int, long, etc < 8 bytes */
+};
+
+/***********
+ * hashmap *
+ ***********/
+
+struct hashmap {
+    struct entry** entries;
+    free_fn val_free;
+    int cap;
+    int len;
+};
+
 
 /*********************************************************************
  *                                                                   *
@@ -13,12 +38,12 @@
  * entry_alloc *
  ***************/
 
-struct map_entry* 
-entry_alloc(char* key, int val)
+struct entry* 
+entry_alloc(char* key, uintptr_t val)
 {
-    struct map_entry* entry;
+    struct entry* entry;
     
-    entry = malloc(sizeof(struct map_entry));
+    entry = malloc(sizeof(struct entry));
     entry->key = strdup(key);
     entry->val = val;
     return entry;
@@ -29,9 +54,11 @@ entry_alloc(char* key, int val)
  **************/
 
 void
-entry_free(struct map_entry* entry) 
+entry_free(struct entry* entry, free_fn val_free) 
 {
     free(entry->key);
+    if (val_free)
+        val_free((void*)entry->val);
     free(entry);
 }
 
@@ -40,16 +67,17 @@ entry_free(struct map_entry* entry)
  *************/
 
 struct hashmap*
-map_alloc(int cap)
+map_alloc(int cap, free_fn val_free)
 {
     struct hashmap* map;
-    struct map_entry** entries;
+    struct entry** entries;
    
     map = malloc(sizeof(struct hashmap));
-    entries = calloc(cap, sizeof(struct map_entry*));
+    entries = calloc(cap, sizeof(struct entry*));
     map->cap = cap;
     map->len = 0;
     map->entries = entries;
+    map->val_free = val_free;
     return map;
 }
 
@@ -60,13 +88,13 @@ map_alloc(int cap)
 void
 map_free(struct hashmap* map) 
 {
-    for (int i = 0; i < map->len; i++) {
-        struct map_entry* entry;
+    for (int i = 0; i < map->cap; i++) {
+        struct entry* entry;
 	
-	entry = map->entries[i];
+	    entry = map->entries[i];
 
         if (entry)
-            entry_free(entry);
+            entry_free(entry, map->val_free);
     }
 
     free(map->entries);
@@ -133,8 +161,13 @@ map_set(struct hashmap* map, char* key, int val)
  ***********/
 
 void
-map_put(struct hashmap* map, char* key, int val) 
+map_put(struct hashmap* map, char* key, uintptr_t val) 
 {
+    struct entry* entry;
+    entry = entry_alloc(key, val);
+    
+    map->entries[map->len] = entry;
+    map->len++;
 }
 
 /*********************************************************************
@@ -162,7 +195,18 @@ map_del(struct hashmap* map, char* key)
  * map_get *
  ***********/
 
-map_get(struct hashmap* map, char* key)
+int
+map_get(struct hashmap* map, char* key, uintptr_t* res)
 {
+    struct entry* entry;
+
+    entry = map->entries[0];
+
+    if (entry == 0)
+        return 0;
+    
+    *res = entry->val;
+
+    return 1;    
 }
 
