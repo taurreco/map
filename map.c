@@ -14,6 +14,7 @@ typedef void (*free_fn)(void* a);
 struct entry {
     char* key;
     uintptr_t val;    /* can also be a int, long, etc < 8 bytes */
+    int psl;
 };
 
 /***********
@@ -46,6 +47,7 @@ entry_alloc(char* key, uintptr_t val)
     entry = malloc(sizeof(struct entry));
     entry->key = strdup(key);
     entry->val = val;
+    entry->psl = 0;
     return entry;
 }
 
@@ -111,23 +113,18 @@ map_free(struct hashmap* map)
  * hash *
  ********/
 
-int
-hash(char* key)
+ /* djb2 http://www.cse.yorku.ca/~oz/hash.html */
+
+uint64_t
+hash(char* str)
 {
-    int hash, len;
-    
-    hash = 0;
-    len = strlen(key);
+    uint64_t hash;
+    int c;
 
-    for (int i = 0; i < len; i++) {
-        hash += key[i];
-        hash += (hash << 10);
-        hash ^= (hash >> 6);
-    }
+    hash = 5381;
 
-    hash += (hash << 3);
-    hash ^= (hash >> 11);
-    hash += (hash << 15);
+    while (c = *str++)
+        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
 
     return hash;
 }
@@ -163,10 +160,34 @@ map_set(struct hashmap* map, char* key, int val)
 void
 map_put(struct hashmap* map, char* key, uintptr_t val) 
 {
-    struct entry* entry;
-    entry = entry_alloc(key, val);
+    struct entry *new, *old;
+    int idx;
+
+    new = entry_alloc(key, val);
+    idx = hash(key) % map->cap;
     
-    map->entries[map->len] = entry;
+    /* probe routine */
+    while (1) {
+        
+        old = map->entries[idx];
+
+        /* empty slot */
+        if (old == 0) {
+            break;        
+        }
+
+        /* swap */
+        if (old->psl < new->psl) {
+            map->entries[idx] = new;
+            new = old;
+        }
+
+        idx++;
+        new->psl++;
+    }
+
+        
+    map->entries[idx] = new;
     map->len++;
 }
 
@@ -180,8 +201,10 @@ map_put(struct hashmap* map, char* key, uintptr_t val)
  * map_del *
  ***********/
 
+int
 map_del(struct hashmap* map, char* key)
 {
+
 }
 
 
@@ -199,8 +222,10 @@ int
 map_get(struct hashmap* map, char* key, uintptr_t* res)
 {
     struct entry* entry;
+    int idx;
 
-    entry = map->entries[0];
+    idx = hash(key) % map->cap;
+    entry = map->entries[idx];
 
     if (entry == 0)
         return 0;
