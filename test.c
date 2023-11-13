@@ -36,8 +36,8 @@ map_put_at(struct hashmap* map, char* key, uintptr_t val, int idx)
 
         idx++;
         new->psl++;
+        map->cost++;
     }
-
         
     map->entries[idx] = new;
     map->len++;
@@ -148,17 +148,19 @@ basic_put()
      *                                     *
      ***************************************/
     
-    TEST_ASSERT_EQUAL_STRING(map->entries[0]->key, "brian");
-    TEST_ASSERT_EQUAL_INT(map->entries[0]->val, 1);
-    TEST_ASSERT_EQUAL_INT(map->entries[0]->psl, 0);
+    TEST_ASSERT_EQUAL_STRING("brian", map->entries[0]->key);
+    TEST_ASSERT_EQUAL_INT(1, map->entries[0]->val);
+    TEST_ASSERT_EQUAL_INT(0, map->entries[0]->psl);
 
-    TEST_ASSERT_EQUAL_STRING(map->entries[1]->key, "dennis");
-    TEST_ASSERT_EQUAL_INT(map->entries[1]->val, 2);
-    TEST_ASSERT_EQUAL_INT(map->entries[1]->psl, 0);
+    TEST_ASSERT_EQUAL_STRING("dennis", map->entries[1]->key);
+    TEST_ASSERT_EQUAL_INT(2, map->entries[1]->val);
+    TEST_ASSERT_EQUAL_INT(0, map->entries[1]->psl);
 
-    TEST_ASSERT_EQUAL_STRING(map->entries[2]->key, "alfred");
-    TEST_ASSERT_EQUAL_INT(map->entries[2]->val, 3);
-    TEST_ASSERT_EQUAL_INT(map->entries[2]->psl, 0);
+    TEST_ASSERT_EQUAL_STRING("alfred", map->entries[2]->key);
+    TEST_ASSERT_EQUAL_INT(3, map->entries[2]->val);
+    TEST_ASSERT_EQUAL_INT(0, map->entries[2]->psl);
+
+    TEST_ASSERT_EQUAL_INT(0, map->cost);
 
     map_put_at(map, "harold", 4, 0);
 
@@ -196,6 +198,8 @@ basic_put()
     TEST_ASSERT_EQUAL_STRING("alfred", map->entries[3]->key);
     TEST_ASSERT_EQUAL_INT(3, map->entries[3]->val);
     TEST_ASSERT_EQUAL_INT(1, map->entries[3]->psl);
+
+    TEST_ASSERT_EQUAL_INT(3, map->cost);
  }
 
 /*********************************************************************
