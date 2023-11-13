@@ -18,7 +18,7 @@ void map_set();
 
 /* deletion */
 
-void map_del();
+int map_del();
 
 /* retreival */
 
