@@ -4,9 +4,6 @@
 
 #include "map.h"
 
-
-typedef void (*free_fn)(void* a);
-
 /*********
  * entry *
  *********/
@@ -23,7 +20,7 @@ struct entry {
 
 struct hashmap {
     struct entry** entries;
-    free_fn val_free;
+    void (*val_free)(void*);
     int cap;
     int len;
     int cost;
@@ -58,7 +55,7 @@ entry_alloc(char* key, uintptr_t val)
  **************/
 
 void
-entry_free(struct entry* entry, free_fn val_free) 
+entry_free(struct entry* entry, void (*val_free)(void*)) 
 {
     free(entry->key);
     if (val_free)
@@ -71,7 +68,7 @@ entry_free(struct entry* entry, free_fn val_free)
  *************/
 
 struct hashmap*
-map_alloc(int cap, free_fn val_free)
+map_alloc(int cap, void (*val_free)(void*))
 {
     struct hashmap* map;
     struct entry** entries;
@@ -113,6 +110,8 @@ map_free(struct hashmap* map)
  *                                                                   *
  *********************************************************************/
 
+ // TODO: consider adding probe and find helpers 
+
 /*******
  * max *
  *******/
@@ -143,6 +142,50 @@ hash(char* str)
     return hash;
 }
 
+/********
+ * find *
+ ********/
+
+ /* returns index into map the key value pair lives, or -1 if not found */
+
+static int
+find(struct hashmap* map, char* key)
+{
+    struct entry* entry;
+    int idx, mean, up, down;
+
+    mean = map->cost / map->len;
+    down = mean + 1;
+    up = mean;
+
+    idx = hash(key) % map->cap;
+
+    while (1) {
+        
+        /* fail if we exceed boundary */
+        if (idx + up < 0 || idx + down >= map->cap)
+            return -1;
+        
+        /* fail if we exceed maxpsl */
+        if (down - up > 2 * map->maxpsl) {
+            return -1;
+        }
+
+        entry = map->entries[idx + up];
+        if (entry && strcmp(entry->key, key) == 0)
+            break;
+
+        entry = map->entries[idx + down];
+        if (entry && strcmp(entry->key, key) == 0)
+            break;
+
+        down++;
+        up--;
+    }
+
+    return idx;
+}
+
 /**********
  * resize *
  **********/
@@ -162,8 +205,8 @@ resize(struct hashmap* map, int new_cap)
  * map_set *
  ***********/
 
-void
-map_set(struct hashmap* map, char* key, int val) 
+int
+map_set(struct hashmap* map, char* key, uintptr_t val) 
 {
 }
 
@@ -221,7 +264,47 @@ map_put(struct hashmap* map, char* key, uintptr_t val)
 int
 map_del(struct hashmap* map, char* key)
 {
+    struct entry* entry;
+    int idx;
 
+    idx = find(map, key);
+
+    /* key not in map */
+    if (idx == -1)
+        return 0;
+
+    /* remove key from map */
+
+    entry = map->entries[idx];
+    map->entries[idx] = 0;
+    map->cost -= entry->psl;
+
+    entry_free(entry, map->val_free);
+
+    map->len--;
+    idx++;   
+
+    /* back-shift routine */
+
+    while (1) {
+        entry = map->entries[idx];
+        
+        /* not sure what to do here*/
+        if (idx >= map->cap)
+            break;
+        
+        /* leave my brother */
+        if (entry->psl <= 0)
+            break;
+
+        entry->psl--;
+        map->cost--;
+        map->entries[idx - 1] = entry;
+        map->entries[idx = 0];
+        idx++;
+    }
+    
+    return 1;    
 }
 
 
@@ -241,38 +324,16 @@ int
 map_get(struct hashmap* map, char* key, uintptr_t* res)
 {
     struct entry* entry;
-    int idx, mean, up, down;
+    int idx;
 
-    mean = map->cost / map->len;
-    down = mean + 1;
-    up = mean;
+    idx = find(map, key);
 
-    idx = hash(key) % map->cap;
+    if (idx == -1)
+        return 0;
 
-    while (1) {
-        
-        /* fail if we exceed boundary */
-        if (idx + up < 0 || idx + down >= map->cap)
-            return 0;
-        
-        /* fail if we exceed maxpsl */
-        if (down - up > 2 * map->maxpsl) {
-            return 0;
-        }
-
-        entry = map->entries[idx + up];
-        if (entry && strcmp(entry->key, key) == 0)
-            break;
-
-        entry = map->entries[idx + down];
-        if (entry && strcmp(entry->key, key) == 0)
-            break;
-
-        down++;
-        up--;
-    }
-    
+    entry = map->entries[idx];
     *res = entry->val;
+
     return 1;    
 }
 
