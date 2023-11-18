@@ -112,6 +112,17 @@ map_free(struct hashmap* map)
 
  // TODO: consider adding probe and find helpers 
 
+
+/*******
+ * max *
+ *******/
+
+static int
+min(int a, int b)
+{
+    return a < b ? a : b;
+}
+
 /*******
  * max *
  *******/
@@ -120,6 +131,49 @@ static int
 max(int a, int b)
 {
     return a > b ? a : b;
+}
+
+
+/************
+ * is_prime *
+ ************/
+
+/* 1 if prime, 0 if not */
+
+static int
+is_prime(int n)
+{
+    int i;
+
+    if (n <= 1)
+        return 0;
+
+    i = 2;
+
+    while (i * i <= n) {
+        if (n % i == 0)
+            return 0;
+        i++;
+    }
+
+    return 1;
+}
+
+/*********
+ * prime *
+ *********/
+
+/* finds nearest prime to input */
+
+static int
+prime(int n)
+{
+    while (!is_prime(n)) {
+        /* opportunity to memoize here */
+        n++;
+    }
+
+    return n;
 }
 
 /********
@@ -184,6 +238,7 @@ find(struct hashmap* map, char* key)
     }
 }
 
+
 /**********
  * resize *
  **********/
@@ -191,7 +246,49 @@ find(struct hashmap* map, char* key)
 static void
 resize(struct hashmap* map, int new_cap)
 {
+    struct hashmap* new;
+    struct entry** tmp;
+
+    new_cap = prime(new_cap);
+    
+    new = map_alloc(new_cap, map->val_free);
+    for (int i = 0; i < min(map->cap, new_cap); i++) {
+        new->entries[i] = map->entries[i];
+        map->entries[i] = 0;
+    }
+
+    tmp = map->entries;
+
+    map->cap = new_cap;
+    map->entries = new->entries;
+
+    new->entries = tmp;
+    map_free(new);
 }
+
+/********
+ * grow *
+ ********/
+
+ static void
+ grow(struct hashmap* map)
+ {
+    if (map->len >= 3 * map->cap / 4) {
+        resize(map, 2 * map->cap);
+    }
+ }
+
+/**********
+ * shrink *
+ **********/
+
+ static void
+ shrink(struct hashmap* map)
+ {
+    if (map->len <= map->cap / 4) {
+        resize(map, map->cap / 2);
+    }
+ }
 
 /*********************************************************************
  *                                                                   *
@@ -206,6 +303,20 @@ resize(struct hashmap* map, int new_cap)
 int
 map_set(struct hashmap* map, char* key, uintptr_t val) 
 {
+    struct entry *new, *old;
+    int idx;
+
+    idx = find(map, key);
+
+    /* key not in map */
+    if (idx == -1)
+        return 0;
+
+    new = entry_alloc(key, val);
+    old = map->entries[idx];
+
+    map->entries[idx] = new;
+    entry_free(old, map->val_free);
 }
 
 /***********
@@ -247,6 +358,8 @@ map_put(struct hashmap* map, char* key, uintptr_t val)
     map->maxpsl = max(map->maxpsl, new->psl);
     map->entries[idx] = new;
     map->len++;
+
+    grow(map);
 }
 
 /*********************************************************************
@@ -301,6 +414,8 @@ map_del(struct hashmap* map, char* key)
         map->entries[idx] = 0;
         idx++;
     }
+
+    shrink(map);
     
     return 1;    
 }
