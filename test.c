@@ -43,6 +43,56 @@ map_put_at(struct hashmap* map, char* key, uintptr_t val, int idx)
     map->len++;
 }
 
+/**************
+ * map_del_at *
+ **************/
+
+int
+map_del_at(struct hashmap* map, int idx)
+{
+    struct entry* entry;
+
+    /* key not in map */
+    if (idx == -1)
+        return 0;
+
+    /* remove key from map */
+
+    entry = map->entries[idx];
+    map->entries[idx] = 0;
+    map->cost -= entry->psl;
+
+    entry_free(entry, map->val_free);
+
+    map->len--;
+    idx++;   
+
+    /* back-shift routine */
+
+    while (1) {
+        entry = map->entries[idx];
+        
+        /* not sure what to do here*/
+        if (idx >= map->cap)
+            break;
+
+        if (entry == 0)
+            break;
+        
+        /* leave my brother */
+        if (entry->psl <= 0)
+            break;
+
+        entry->psl--;
+        map->cost--;
+        map->entries[idx - 1] = entry;
+        map->entries[idx] = 0;
+        idx++;
+    }
+    
+    return 1;    
+}
+
 /*********************************************************************
  *                                                                   *
  *                          unity helpers                            *
@@ -202,6 +252,81 @@ basic_put()
     TEST_ASSERT_EQUAL_INT(3, map->cost);
  }
 
+
+/*************
+ * basic_del *
+ *************/
+
+ void
+ basic_del()
+ {
+    struct hashmap* map;
+    uintptr_t res;
+    int status;
+
+    map = map_alloc(5, 0);
+
+    map_put_at(map, "brian", 1, 0);
+    map_put_at(map, "dennis", 2, 1);
+    map_put_at(map, "alfred", 3, 2);
+    map_put_at(map, "harold", 4, 0);
+
+    /***************************************
+     *                                     *
+     *      |-----------|-----|-----|      *
+     *      |    key    | val | psl |      *     
+     *      |-----------|-----|-----|      *
+     *      |  "brian"  |  1  |  0  |      *
+     *      |-----------|-----|-----|      *
+     *      |  "harold" |  4  |  1  |      *
+     *      |-----------|-----|-----|      *
+     *      |  "dennis" |  2  |  1  |      *
+     *      |-----------|-----|-----|      *
+     *      |  "alfred" |  3  |  1  |      *
+     *      |-----------|-----|-----|      *
+     *      |     -     |  -  |  -  |      *
+     *      |-----------|-----|-----|      *     
+     *                                     *     
+     *                                     *
+     ***************************************/
+
+    status = map_del_at(map, 1);    /* delete harold */
+
+    /***************************************
+     *                                     *
+     *      |-----------|-----|-----|      *
+     *      |    key    | val | psl |      *     
+     *      |-----------|-----|-----|      *
+     *      |  "brian"  |  1  |  0  |      *
+     *      |-----------|-----|-----|      *
+     *      |  "dennis" |  2  |  0  |      *
+     *      |-----------|-----|-----|      *
+     *      |  "alfred" |  3  |  0  |      *
+     *      |-----------|-----|-----|      *
+     *      |     -     |  -  |  -  |      *
+     *      |-----------|-----|-----|      *
+     *      |     -     |  -  |  -  |      *
+     *      |-----------|-----|-----|      *     
+     *                                     *     
+     *                                     *
+     ***************************************/
+
+    TEST_ASSERT_EQUAL_INT(1, status);
+    TEST_ASSERT_EQUAL_STRING("brian", map->entries[0]->key);
+    TEST_ASSERT_EQUAL_INT(1, map->entries[0]->val);
+    TEST_ASSERT_EQUAL_INT(0, map->entries[0]->psl);
+
+    TEST_ASSERT_EQUAL_STRING("dennis", map->entries[1]->key);
+    TEST_ASSERT_EQUAL_INT(2, map->entries[1]->val);
+    TEST_ASSERT_EQUAL_INT(0, map->entries[1]->psl);
+
+    TEST_ASSERT_EQUAL_STRING("alfred", map->entries[2]->key);
+    TEST_ASSERT_EQUAL_INT(3, map->entries[2]->val);
+    TEST_ASSERT_EQUAL_INT(0, map->entries[2]->psl);
+
+    TEST_ASSERT_EQUAL_INT(0, map->cost);
+ }
+
 /*********************************************************************
  *                                                                   *
  *                              main                                 *
@@ -219,6 +344,7 @@ main()
     RUN_TEST(basic);
     RUN_TEST(basic_put);
     RUN_TEST(basic_probe);
+    RUN_TEST(basic_del);
     return UNITY_END();
 }
 

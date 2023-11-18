@@ -173,17 +173,15 @@ find(struct hashmap* map, char* key)
 
         entry = map->entries[idx + up];
         if (entry && strcmp(entry->key, key) == 0)
-            break;
+            return idx + up;
 
         entry = map->entries[idx + down];
         if (entry && strcmp(entry->key, key) == 0)
-            break;
+            return idx + down;
 
         down++;
         up--;
     }
-
-    return idx;
 }
 
 /**********
@@ -300,7 +298,7 @@ map_del(struct hashmap* map, char* key)
         entry->psl--;
         map->cost--;
         map->entries[idx - 1] = entry;
-        map->entries[idx = 0];
+        map->entries[idx] = 0;
         idx++;
     }
     
