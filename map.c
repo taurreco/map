@@ -4,6 +4,9 @@
 
 #include "map.h"
 
+#define MAX_PRIME_GAP 222    /* maximum prime gap for numbers under 100 mil */
+#define HASH_BASE 5381
+
 /*********
  * entry *
  *********/
@@ -38,7 +41,7 @@ struct hashmap {
  * entry_alloc *
  ***************/
 
-struct entry* 
+static struct entry* 
 entry_alloc(char* key, uintptr_t val)
 {
     struct entry* entry;
@@ -54,7 +57,7 @@ entry_alloc(char* key, uintptr_t val)
  * entry_free *
  **************/
 
-void
+static void
 entry_free(struct entry* entry, void (*val_free)(void*)) 
 {
     free(entry->key);
@@ -110,9 +113,6 @@ map_free(struct hashmap* map)
  *                                                                   *
  *********************************************************************/
 
- // TODO: consider adding probe and find helpers 
-
-
 /*******
  * max *
  *******/
@@ -133,7 +133,6 @@ max(int a, int b)
     return a > b ? a : b;
 }
 
-
 /************
  * is_prime *
  ************/
@@ -143,19 +142,19 @@ max(int a, int b)
 static int
 is_prime(int n)
 {
-    int i;
-
     if (n <= 1)
         return 0;
-
-    i = 2;
-
-    while (i * i <= n) {
-        if (n % i == 0)
+    
+    if (n == 2 || n == 3)
+        return 1;
+    
+    if (n % 2 == 0 || n % 3 == 0)
+        return 0;
+    
+    for (int i = 5; i * i <= n; i = i + 6)
+        if (n % i == 0 || n % (i + 2) == 0)
             return 0;
-        i++;
-    }
-
+ 
     return 1;
 }
 
@@ -163,14 +162,19 @@ is_prime(int n)
  * prime *
  *********/
 
-/* finds nearest prime to input */
+/* finds closest prime to n greater than n */
 
 static int
 prime(int n)
 {
+    int i;
+
+    i = 0;
     while (!is_prime(n)) {
-        /* opportunity to memoize here */
+        if (i > MAX_PRIME_GAP)
+            break;
         n++;
+        i++;
     }
 
     return n;
@@ -180,7 +184,7 @@ prime(int n)
  * hash *
  ********/
 
- /* djb2 http://www.cse.yorku.ca/~oz/hash.html */
+/* djb2 http://www.cse.yorku.ca/~oz/hash.html */
 
 static uint64_t
 hash(char* str)
@@ -188,7 +192,7 @@ hash(char* str)
     uint64_t hash;
     int c;
 
-    hash = 5381;
+    hash = HASH_BASE;
 
     while (c = *str++)
         hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
@@ -200,7 +204,7 @@ hash(char* str)
  * find *
  ********/
 
- /* returns index into map the key value pair lives, or -1 if not found */
+/* returns index into map the key value pair lives, or -1 if not found */
 
 static int
 find(struct hashmap* map, char* key)
@@ -270,25 +274,25 @@ resize(struct hashmap* map, int new_cap)
  * grow *
  ********/
 
- static void
- grow(struct hashmap* map)
- {
+static void
+grow(struct hashmap* map)
+{
     if (map->len >= 3 * map->cap / 4) {
         resize(map, 2 * map->cap);
     }
- }
+}
 
 /**********
  * shrink *
  **********/
 
- static void
- shrink(struct hashmap* map)
- {
+static void
+shrink(struct hashmap* map)
+{
     if (map->len <= map->cap / 4) {
         resize(map, map->cap / 2);
     }
- }
+}
 
 /*********************************************************************
  *                                                                   *
