@@ -321,6 +321,8 @@ basic_probe()
     TEST_ASSERT_EQUAL_INT(1, map->entries[3]->psl);
 
     TEST_ASSERT_EQUAL_INT(3, map->cost);
+
+    map_free(map);
 }
 
 
@@ -395,6 +397,8 @@ basic_del()
     TEST_ASSERT_EQUAL_INT(0, map->entries[2]->psl);
 
     TEST_ASSERT_EQUAL_INT(0, map->cost);
+
+    map_free(map);
  }
 
 /**************
@@ -440,6 +444,7 @@ basic_grow()
 
     TEST_ASSERT_EQUAL_INT(0, map->cost);
 
+    map_free(map);
 }
 
 /****************
@@ -476,6 +481,8 @@ basic_shrink()
     TEST_ASSERT_EQUAL_PTR(0, map->entries[6]);
 
     TEST_ASSERT_EQUAL_INT(0, map->cost);
+
+    map_free(map);
 }
 
 
