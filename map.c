@@ -5,7 +5,7 @@
 #include "map.h"
 
 #define MAX_PRIME_GAP 222    /* maximum prime gap for numbers under 100 mil */
-#define HASH_BASE 5381
+#define BASE_PRIME 5381
 
 /*********
  * entry *
@@ -158,14 +158,14 @@ is_prime(int n)
     return 1;
 }
 
-/*********
- * prime *
- *********/
+/**************
+ * next_prime *
+ **************/
 
 /* finds closest prime to n greater than n */
 
 static int
-prime(int n)
+next_prime(int n)
 {
     int i;
 
@@ -192,7 +192,7 @@ hash(char* str)
     uint64_t hash;
     int c;
 
-    hash = HASH_BASE;
+    hash = BASE_PRIME;
 
     while (c = *str++)
         hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
@@ -221,27 +221,30 @@ find(struct hashmap* map, char* key)
     while (1) {
         
         /* fail if we exceed boundary */
-        if (idx + up < 0 || idx + down >= map->cap)
+        if (idx + up < 0 && idx + down >= map->cap)
             return -1;
         
         /* fail if we exceed maxpsl */
-        if (down - up > 2 * map->maxpsl) {
+        if (down - up > 2 * map->maxpsl + 1) {
             return -1;
         }
 
-        entry = map->entries[idx + up];
-        if (entry && strcmp(entry->key, key) == 0)
-            return idx + up;
-
-        entry = map->entries[idx + down];
-        if (entry && strcmp(entry->key, key) == 0)
-            return idx + down;
+        if (idx + up >= 0) {
+            entry = map->entries[idx + up];
+            if (entry && strcmp(entry->key, key) == 0)
+                return idx + up;
+        }
+        
+        if (idx + down < map->cap) {
+            entry = map->entries[idx + down];
+            if (entry && strcmp(entry->key, key) == 0)
+                return idx + down;
+        }
 
         down++;
         up--;
     }
 }
-
 
 /**********
  * resize *
@@ -253,7 +256,7 @@ resize(struct hashmap* map, int new_cap)
     struct hashmap* new;
     struct entry** tmp;
 
-    new_cap = prime(new_cap);
+    new_cap = next_prime(new_cap);
     
     new = map_alloc(new_cap, map->val_free);
     for (int i = 0; i < min(map->cap, new_cap); i++) {
@@ -262,6 +265,7 @@ resize(struct hashmap* map, int new_cap)
     }
 
     tmp = map->entries;
+    new->cap = map->cap;
 
     map->cap = new_cap;
     map->entries = new->entries;
@@ -327,7 +331,7 @@ map_set(struct hashmap* map, char* key, uintptr_t val)
  * map_put *
  ***********/
 
- /* table insertion with robin hood probing */
+/* table insertion with robin hood probing */
 
 void
 map_put(struct hashmap* map, char* key, uintptr_t val) 
@@ -424,7 +428,6 @@ map_del(struct hashmap* map, char* key)
     return 1;    
 }
 
-
 /*********************************************************************
  *                                                                   *
  *                             retrieval                             *
@@ -453,4 +456,3 @@ map_get(struct hashmap* map, char* key, uintptr_t* res)
 
     return 1;    
 }
-
