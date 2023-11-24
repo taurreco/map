@@ -7,6 +7,10 @@
  *                                                                   *
  *********************************************************************/
 
+/********
+ * tree *
+ ********/
+
 struct tree {
     struct tree* left;
     struct tree* right;
@@ -88,7 +92,7 @@ map_put_at(struct hashmap* map, char* key, uintptr_t val, int idx)
     struct entry *new, *old;
 
     new = entry_alloc(key, val);
-    
+
     /* probe routine */
     while (1) {
         
@@ -109,9 +113,41 @@ map_put_at(struct hashmap* map, char* key, uintptr_t val, int idx)
         new->psl++;
         map->cost++;
     }
-        
+
+    map->maxpsl = max(map->maxpsl, new->psl);
     map->entries[idx] = new;
     map->len++;
+}
+
+/***************
+ * map_put_psl *
+ ***************/
+
+/* inserts entry with specified psl, destroys previous entry */
+
+void
+map_put_psl(struct hashmap* map, char* key, uintptr_t val, int psl, int idx) 
+{
+    struct entry *new, *old;
+
+    new = entry_alloc(key, val);
+    new->psl = psl;
+    
+    old = map->entries[idx];
+
+    if (old) {
+        map->cost -= old->psl;
+        map->len--;
+        entry_free(old, map->val_free);
+    }
+
+    map->entries[idx] = new;
+    map->len++;
+    map->cost += psl;
+
+    if (psl > map->maxpsl) {
+        map->maxpsl = psl;
+    }
 }
 
 /**************
@@ -220,15 +256,15 @@ basic_put()
     map_put(map, "jeffrey", 4);
 
     status = map_get(map, "brian", &res);
-    TEST_ASSERT_EQUAL_INT((int)res, 1);
-    TEST_ASSERT_EQUAL_INT(status, 1);
+    TEST_ASSERT_EQUAL_INT(0, status);
+    TEST_ASSERT_EQUAL_INT(1, (int)res);
 
     status = map_get(map, "alfred", &res);
-    TEST_ASSERT_EQUAL_INT((int)res, 3);
-    TEST_ASSERT_EQUAL_INT(status, 1);
+    TEST_ASSERT_EQUAL_INT(0, status);
+    TEST_ASSERT_EQUAL_INT(3, (int)res);
 
     status = map_get(map, "harold", &res);
-    TEST_ASSERT_EQUAL_INT(status, 0);
+    TEST_ASSERT_EQUAL_INT(EMAPNOENTRY, status);
 
     map_free(map);
 }
@@ -324,7 +360,6 @@ basic_probe()
 
     map_free(map);
 }
-
 
 /*************
  * basic_del *
@@ -569,20 +604,215 @@ check_tree_values()
     map_put(map, "jeffrey", d);
 
     status = map_get(map, "brian", &res);
-    TEST_ASSERT_EQUAL_INT(status, 1);
+    TEST_ASSERT_EQUAL_INT(0, status);
     TEST_ASSERT_TRUE(tree_eq((struct tree*)res, a));
 
     status = map_get(map, "alfred", &res);
-    TEST_ASSERT_EQUAL_INT(status, 1);
+    TEST_ASSERT_EQUAL_INT(0, status);
     TEST_ASSERT_TRUE(tree_eq((struct tree*)res, b));
 
     status = map_get(map, "harold", &res);
-    TEST_ASSERT_EQUAL_INT(status, 1);
+    TEST_ASSERT_EQUAL_INT(0, status);
     TEST_ASSERT_TRUE(tree_eq((struct tree*)res, c));
 
     status = map_get(map, "jeffrey", &res);
-    TEST_ASSERT_EQUAL_INT(status, 1);
+    TEST_ASSERT_EQUAL_INT(0, status);
     TEST_ASSERT_TRUE(tree_eq((struct tree*)res, d));
+
+    map_free(map);
+}
+
+
+/***************
+ * check_probe *
+ ***************/
+
+void
+check_probe()
+{
+    struct hashmap* map;
+
+    map = map_alloc(8, 0);
+
+    map_put_psl(map, "", 43, 0, 1);
+    map_put_psl(map, "", 17, 1, 2);
+    map_put_psl(map, "", 31, 1, 3);
+    map_put_psl(map, "", 10, 1, 4);
+    map_put_psl(map, "", 28, 2, 5);
+
+    /***********************************************
+     *                                             *
+     *                         |------|-----|      *
+     *                         | val  | psl |      *     
+     *                         |------|-----|      *
+     *                         |  -   |  -  |      *
+     *                         |------|-----|      *
+     *       to insert         |  43  |  0  |      *
+     *    |------|-----|       |------|-----|      *
+     *    |  76  |  0  | ----> |  17  |  1  |      *
+     *    |------|-----|       |------|-----|      *
+     *                         |  31  |  1  |      *
+     *                         |------|-----|      *
+     *                         |  10  |  1  |      *
+     *                         |------|-----|      *  
+     *                         |  28  |  2  |      *
+     *                         |------|-----|      *
+     *                         |  -   |  -  |      *
+     *                         |------|-----|      * 
+     *                         |  -   |  -  |      *
+     *                         |------|-----|      *          
+     *                                             *     
+     *                                             *
+     ***********************************************/
+
+    map_put_at(map, "", 76, 2);
+
+    /****************************
+     *                          *
+     *      |------|-----|      *
+     *      | val  | psl |      *     
+     *      |------|-----|      *
+     *      |  -   |  -  |      *
+     *      |------|-----|      *
+     *      |  43  |  0  |      *
+     *      |------|-----|      *
+     *      |  17  |  1  |      *
+     *      |------|-----|      *
+     *      |  31  |  1  |      *
+     *      |------|-----|      *
+     *      |  76  |  2  |      *
+     *      |------|-----|      *  
+     *      |  28  |  2  |      *
+     *      |------|-----|      *
+     *      |  10  |  3  |      *
+     *      |------|-----|      * 
+     *      |  -   |  -  |      *
+     *      |------|-----|      *          
+     *                          *     
+     *                          *
+     ****************************/
+
+    TEST_ASSERT_EQUAL_PTR(0, map->entries[0]);
+    
+    TEST_ASSERT_EQUAL_INT(43, map->entries[1]->val);
+    TEST_ASSERT_EQUAL_INT(0, map->entries[1]->psl);
+
+    TEST_ASSERT_EQUAL_INT(17, map->entries[2]->val);
+    TEST_ASSERT_EQUAL_INT(1, map->entries[2]->psl);
+
+    TEST_ASSERT_EQUAL_INT(31, map->entries[3]->val);
+    TEST_ASSERT_EQUAL_INT(1, map->entries[3]->psl);
+
+    TEST_ASSERT_EQUAL_INT(76, map->entries[4]->val);
+    TEST_ASSERT_EQUAL_INT(2, map->entries[4]->psl);
+
+    TEST_ASSERT_EQUAL_INT(28, map->entries[5]->val);
+    TEST_ASSERT_EQUAL_INT(2, map->entries[5]->psl);
+
+    TEST_ASSERT_EQUAL_INT(10, map->entries[6]->val);
+    TEST_ASSERT_EQUAL_INT(3, map->entries[6]->psl);
+
+    TEST_ASSERT_EQUAL_PTR(0, map->entries[7]);
+
+    TEST_ASSERT_EQUAL_INT(9, map->cost);
+    TEST_ASSERT_EQUAL_INT(3, map->maxpsl);
+
+    map_free(map);
+}
+
+/*************
+ * check_del *
+ *************/
+
+void
+check_del()
+{
+    struct hashmap* map;
+
+    map = map_alloc(8, 0);
+
+    map_put_psl(map, "", 48, 0, 1);
+    map_put_psl(map, "", 15, 1, 2);
+    map_put_psl(map, "", 33, 1, 3);
+    map_put_psl(map, "", 19, 2, 4);
+    map_put_psl(map, "", 92, 0, 5);
+    map_put_psl(map, "", 72, 1, 6);
+
+
+    /*****************************************
+     *                                       *
+     *      |------|-----|                   *
+     *      | val  | psl |                   *     
+     *      |------|-----|                   *
+     *      |  -   |  -  |                   *
+     *      |------|-----|                   *
+     *      |  48  |  0  |                   *
+     *      |------|-----|                   *
+     *      |  15  |  1  | <-- to delete     *
+     *      |------|-----|                   *
+     *      |  33  |  1  |                   *
+     *      |------|-----|                   *
+     *      |  19  |  2  |                   *
+     *      |------|-----|                   *   
+     *      |  92  |  0  |                   *
+     *      |------|-----|                   *
+     *      |  72  |  1  |                   *
+     *      |------|-----|                   * 
+     *      |  -   |  -  |                   *
+     *      |------|-----|                   *          
+     *                                       *     
+     *                                       *
+     *****************************************/
+
+    map_del_at(map, 2);
+
+    /****************************
+     *                          *
+     *      |------|-----|      *
+     *      | val  | psl |      *     
+     *      |------|-----|      *
+     *      |  -   |  -  |      *
+     *      |------|-----|      *
+     *      |  48  |  0  |      *
+     *      |------|-----|      *
+     *      |  33  |  0  |      *
+     *      |------|-----|      *
+     *      |  19  |  1  |      *
+     *      |------|-----|      *
+     *      |  -   |  -  |      *
+     *      |------|-----|      *  
+     *      |  92  |  0  |      *
+     *      |------|-----|      *
+     *      |  72  |  1  |      *
+     *      |------|-----|      * 
+     *      |  -   |  -  |      *
+     *      |------|-----|      *          
+     *                          *     
+     *                          *
+     ****************************/
+
+    TEST_ASSERT_EQUAL_PTR(0, map->entries[0]);
+    
+    TEST_ASSERT_EQUAL_INT(48, map->entries[1]->val);
+    TEST_ASSERT_EQUAL_INT(0, map->entries[1]->psl);
+
+    TEST_ASSERT_EQUAL_INT(33, map->entries[2]->val);
+    TEST_ASSERT_EQUAL_INT(0, map->entries[2]->psl);
+
+    TEST_ASSERT_EQUAL_INT(19, map->entries[3]->val);
+    TEST_ASSERT_EQUAL_INT(1, map->entries[3]->psl);
+
+    TEST_ASSERT_EQUAL_PTR(0, map->entries[4]);
+
+    TEST_ASSERT_EQUAL_INT(92, map->entries[5]->val);
+    TEST_ASSERT_EQUAL_INT(0, map->entries[5]->psl);
+
+    TEST_ASSERT_EQUAL_INT(72, map->entries[6]->val);
+    TEST_ASSERT_EQUAL_INT(1, map->entries[6]->psl);
+
+    TEST_ASSERT_EQUAL_PTR(0, map->entries[7]);
+
+    TEST_ASSERT_EQUAL_INT(2, map->cost);
 
     map_free(map);
 }
@@ -611,6 +841,8 @@ main()
     RUN_TEST(check_tree_values);
     RUN_TEST(check_is_prime);
     RUN_TEST(check_next_prime);
+    RUN_TEST(check_probe);
+    RUN_TEST(check_del);
 
     return UNITY_END();
 }

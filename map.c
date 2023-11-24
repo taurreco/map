@@ -4,7 +4,6 @@
 
 #include "map.h"
 
-#define MAX_PRIME_GAP 222    /* maximum prime gap for numbers under 100 mil */
 #define BASE_PRIME 5381
 
 /*********
@@ -23,13 +22,13 @@ struct entry {
 
 struct hashmap {
     struct entry** entries;
-    void (*val_free)(void*);
+    void (*val_free)(void*);    /* free's value data structure */
     int cap;
     int len;
-    int cost;
-    int maxpsl;
+    int cost;                   /* sum of psl of all entries */
+    int maxpsl;                 /* max probe sequence length */
+    int pos;                    /* is either the index of an entry in the map or -1 */
 };
-
 
 /*********************************************************************
  *                                                                   *
@@ -82,6 +81,7 @@ map_alloc(int cap, void (*val_free)(void*))
     map->len = 0;
     map->cost = 0;
     map->maxpsl = 0;
+    map->pos = -1;
     map->entries = entries;
     map->val_free = val_free;
     return map;
@@ -171,8 +171,6 @@ next_prime(int n)
 
     i = 0;
     while (!is_prime(n)) {
-        if (i > MAX_PRIME_GAP)
-            break;
         n++;
         i++;
     }
@@ -204,7 +202,7 @@ hash(char* str)
  * find *
  ********/
 
-/* returns index into map the key value pair lives, or -1 if not found */
+/* returns index into map the key value pair lives, or EMAPNOENTRY if not found */
 
 static int
 find(struct hashmap* map, char* key)
@@ -222,11 +220,11 @@ find(struct hashmap* map, char* key)
         
         /* fail if we exceed boundary */
         if (idx + up < 0 && idx + down >= map->cap)
-            return -1;
+            return EMAPNOENTRY;
         
         /* fail if we exceed maxpsl */
         if (down - up > 2 * map->maxpsl + 1) {
-            return -1;
+            return EMAPNOENTRY;
         }
 
         if (idx + up >= 0) {
@@ -249,6 +247,8 @@ find(struct hashmap* map, char* key)
 /**********
  * resize *
  **********/
+
+/* resizes map up to a prime close to new_cap */
 
 static void
 resize(struct hashmap* map, int new_cap)
@@ -308,6 +308,8 @@ shrink(struct hashmap* map)
  * map_set *
  ***********/
 
+/* sets the value of an entry with specified key, or returns EMAPNOENTRY */
+
 int
 map_set(struct hashmap* map, char* key, uintptr_t val) 
 {
@@ -317,14 +319,16 @@ map_set(struct hashmap* map, char* key, uintptr_t val)
     idx = find(map, key);
 
     /* key not in map */
-    if (idx == -1)
-        return 0;
+    if (idx < 0)
+        return EMAPNOENTRY;
 
     new = entry_alloc(key, val);
     old = map->entries[idx];
 
     map->entries[idx] = new;
     entry_free(old, map->val_free);
+
+    return 0;
 }
 
 /***********
@@ -350,6 +354,13 @@ map_put(struct hashmap* map, char* key, uintptr_t val)
         /* empty slot */
         if (old == 0) {
             break;        
+        }
+
+        /* update existing entry */
+        if (strcmp(new->key, old->key) == 0) {
+            map->entries[idx] = new;
+            entry_free(old, map->val_free);
+            break;
         }
 
         /* swap */
@@ -380,6 +391,8 @@ map_put(struct hashmap* map, char* key, uintptr_t val)
  * map_del *
  ***********/
 
+/* deletes entry with key or EMAPNOENTRY if no entry with that key exists */
+
 int
 map_del(struct hashmap* map, char* key)
 {
@@ -389,8 +402,8 @@ map_del(struct hashmap* map, char* key)
     idx = find(map, key);
 
     /* key not in map */
-    if (idx == -1)
-        return 0;
+    if (idx < 0)
+        return EMAPNOENTRY;
 
     /* remove key from map */
 
@@ -425,7 +438,7 @@ map_del(struct hashmap* map, char* key)
 
     shrink(map);
     
-    return 1;    
+    return 0;    
 }
 
 /*********************************************************************
@@ -448,11 +461,92 @@ map_get(struct hashmap* map, char* key, uintptr_t* res)
 
     idx = find(map, key);
 
-    if (idx == -1)
-        return 0;
+    if (idx < 0)
+        return EMAPNOENTRY;
 
     entry = map->entries[idx];
     *res = entry->val;
 
-    return 1;    
+    return 0; 
+}
+
+/*********************************************************************
+ *                                                                   *
+ *                             iteration                             *
+ *                                                                   *
+ *********************************************************************/
+
+/************
+ * map_next *
+ ************/
+
+/* sets map->pos equal to the next index with an entry */
+
+void
+map_next(struct hashmap* map)
+{
+    struct entry* cur;
+    int i;
+
+    i = map->pos;
+    cur = NULL;
+
+    while (1) {
+
+        if (i >= map->cap || i < 0)
+            break;
+
+        cur = map->entries[i];
+        if (cur != NULL)
+            break;
+        
+        i++;
+    }
+
+    if (cur == NULL) {
+        map->pos = -1;
+    } else {
+        map->pos = i;
+    }
+}
+
+/*************
+ * map_begin *
+ *************/
+
+/* initializes pos to be the index of the first entry */
+
+void 
+map_begin(struct hashmap* map)
+{
+    map->pos = 0;
+    map_next(map);
+}
+
+/***********
+ * map_end *
+ ***********/
+
+/* 1 if pos is at the end of the map, 0 if not */
+
+int
+map_end(struct hashmap* map)
+{
+    return map->pos < 0;
+}
+
+/***********
+ * map_cur *
+ ***********/
+
+/* copies key and val at current entry */
+
+void 
+map_cur(struct hashmap* map, char* key, uintptr_t* val)
+{
+    struct entry* cur;
+
+    cur = map->entries[map->pos];
+    strcpy(key, cur->key);
+    *val = cur->val;
 }
