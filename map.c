@@ -202,7 +202,7 @@ hash(char* str)
  * find *
  ********/
 
-/* returns index into map the key value pair lives, or EMAPNOENTRY if not found */
+/* returns index into map the key value pair lives, or MAP_ENOENTRY if not found */
 
 static int
 find(struct hashmap* map, char* key)
@@ -220,11 +220,11 @@ find(struct hashmap* map, char* key)
         
         /* fail if we exceed boundary */
         if (idx + up < 0 && idx + down >= map->cap)
-            return EMAPNOENTRY;
+            return MAP_ENOENTRY;
         
         /* fail if we exceed maxpsl */
         if (down - up > 2 * map->maxpsl + 1) {
-            return EMAPNOENTRY;
+            return MAP_ENOENTRY;
         }
 
         if (idx + up >= 0) {
@@ -308,7 +308,7 @@ shrink(struct hashmap* map)
  * map_set *
  ***********/
 
-/* sets the value of an entry with specified key, or returns EMAPNOENTRY */
+/* sets the value of an entry with specified key, or returns MAP_ENOENTRY */
 
 int
 map_set(struct hashmap* map, char* key, uintptr_t val) 
@@ -320,7 +320,7 @@ map_set(struct hashmap* map, char* key, uintptr_t val)
 
     /* key not in map */
     if (idx < 0)
-        return EMAPNOENTRY;
+        return MAP_ENOENTRY;
 
     new = entry_alloc(key, val);
     old = map->entries[idx];
@@ -391,7 +391,7 @@ map_put(struct hashmap* map, char* key, uintptr_t val)
  * map_del *
  ***********/
 
-/* deletes entry with key or EMAPNOENTRY if no entry with that key exists */
+/* deletes entry with key or MAP_ENOENTRY if no entry with that key exists */
 
 int
 map_del(struct hashmap* map, char* key)
@@ -403,7 +403,7 @@ map_del(struct hashmap* map, char* key)
 
     /* key not in map */
     if (idx < 0)
-        return EMAPNOENTRY;
+        return MAP_ENOENTRY;
 
     /* remove key from map */
 
@@ -462,7 +462,7 @@ map_get(struct hashmap* map, char* key, uintptr_t* res)
     idx = find(map, key);
 
     if (idx < 0)
-        return EMAPNOENTRY;
+        return MAP_ENOENTRY;
 
     entry = map->entries[idx];
     *res = entry->val;

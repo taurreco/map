@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#define EMAPNOENTRY -30
+#define MAP_ENOENTRY -30
 
 struct hashmap;
 
